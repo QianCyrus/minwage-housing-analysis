@@ -1,10 +1,10 @@
 # minwage-housing-analysis
 
-> **Report: [English](report/report.md) | [中文](report/report_zh.md) | [日本語](report/report_ja.md)**
+**[日本語](#日本語) | [English](#english) | [中文](#中文) | [Reports / レポート / 报告](#reports)**
 
 ---
 
-## Quick Start
+## Quick Start / クイックスタート / 快速开始
 
 ```bash
 # 1. Setup environment (Python 3.11+)
@@ -18,7 +18,7 @@ bash scripts/run_pipeline.sh
 bash scripts/run_pipeline.sh --skip-download
 ```
 
-Optional environment variables (increase API rate limits):
+Optional environment variables:
 
 ```bash
 export CENSUS_API_KEY="your_key"   # https://api.census.gov/data/key_signup.html
@@ -27,7 +27,65 @@ export BLS_API_KEY="your_key"      # https://data.bls.gov/registrationEngine/
 
 ---
 
-## What This Project Does
+<a id="日本語"></a>
+
+## 日本語
+
+### プロジェクトの概要
+
+本プロジェクトは、米国の州レベルの最低賃金引き上げが賃借人の住宅の手頃さを改善するかどうかを調査する。51州／DCの2010–2024年均衡パネル（N=714、2020年除外）を用い、双方向固定効果（TWFE）差の差デザインにより、最低賃金引き上げが家賃対所得比に与える因果効果を推定する。
+
+**主な知見：**
+- 住宅の手頃さに有意な改善なし（家賃対所得比 +0.22pp、p=0.21）
+- 有意な家賃パススルー：**最低賃金$1引き上げあたり家賃+$26.5/月**（p<0.001）
+- 異質的効果：**高負担州で+$88/月**（p=0.002） vs 低負担州+$13（有意でない）
+- 政策的含意：最低賃金引き上げだけでは不十分——特に住宅市場が逼迫した地域
+
+### 実装方法
+
+パイプラインは11段階を順次実行する：
+
+| 段階 | スクリプト | 内容 |
+|------|-----------|------|
+| 1. ダウンロード | `download_data.py` | FRED、Census ACS、BLS LAUS、BLS QCEWから生データ取得 |
+| 2. 政策クリーニング | `clean_policy.py` | 最低賃金変数の構築；年間$0.50以上の引き上げを処置と定義（CPI微小調整を除外）；州ごとの初回処置年の特定 |
+| 3. アウトカム | `clean_outcomes.py` | ACS家賃負担（B25071）と家賃水準（B25064）の処理 |
+| 4. コントロール変数 | `clean_controls.py` | 失業率の処理；欠損率50%超の変数を自動除外 |
+| 5. パネル構築 | `build_panel.py` | 全データソースを51×15の均衡パネルに統合 |
+| 6. 記述統計 | `eda.py` | 要約統計量、処置前バランス表、トレンドプロット |
+| 7. ベースラインDiD | `did_baseline.py` | 州＋年固定効果、クラスター標準誤差によるTWFE回帰 |
+| 8. イベントスタディ | `event_study.py` | 処置前後±5年の動的効果（家賃負担と対数家賃） |
+| 9. 頑健性 | `robustness.py` | 代替仕様、プラセボ順列検定（100回） |
+| 10. 異質性分析 | `heterogeneity.py` | パススルー弾力性、住宅市場条件別のサブグループ効果 |
+| 11. 図表 | `make_figures.py` | 係数プロット、イベントスタディ図、診断図 |
+
+### 識別戦略
+
+- **処置群：** 2015–2024年に単年度$0.50以上引き上げた30州
+- **対照群：** 連邦最低賃金（$7.25）付近に留まった21州
+- **モデル：** Y_st = α_s + λ_t + β · Post_st + γ · X_st + ε_st
+- **推論：** 州クラスター標準誤差によるOLS（51クラスター）
+- **頑健性：** 連続処置強度（mw_gap）、州線形トレンド、2020年以前サブサンプル、代替被説明変数、代替処置定義、プラセボ検定
+
+### データソース
+
+すべてのデータはプログラムにより自動ダウンロードされる。詳細は[DATA_SOURCES.md](DATA_SOURCES.md)を参照。
+
+| ソース | 変数 | 提供元 |
+|--------|------|--------|
+| FRED | 州・連邦最低賃金 | セントルイス連邦準備銀行 |
+| ACS B25071 | 家賃の所得に対する割合（中央値） | 米国国勢調査局 |
+| ACS B25064 | 家賃水準（中央値、ドル） | 米国国勢調査局 |
+| BLS LAUS | 州別失業率 | 米国労働統計局 |
+| BLS QCEW | 平均週給（カバレッジ約7%） | 米国労働統計局 |
+
+---
+
+<a id="english"></a>
+
+## English
+
+### What This Project Does
 
 This project investigates whether US state-level minimum wage increases improve housing affordability for renters. Using a balanced panel of 51 states/DC over 2010–2024 (N=714, excluding 2020), we apply a two-way fixed effects (TWFE) difference-in-differences design to estimate the causal effect of minimum wage hikes on the rent-to-income ratio.
 
@@ -37,7 +95,7 @@ This project investigates whether US state-level minimum wage increases improve 
 - Heterogeneous effects: **+$88/month in high-burden states** (p=0.002) vs +$13 in low-burden states (NS)
 - Policy implication: MW increases alone insufficient — rental markets absorb wage gains, especially in tight housing markets
 
-## How It Works
+### How It Works
 
 The pipeline runs 11 stages sequentially:
 
@@ -63,7 +121,7 @@ The pipeline runs 11 stages sequentially:
 - **Inference:** OLS with state-clustered standard errors (51 clusters)
 - **Robustness:** Continuous treatment intensity (mw_gap), state linear trends, pre-2020 subsample, rent-level outcome, alternative treatment definition, placebo test
 
-## Data Sources
+### Data Sources
 
 All data is downloaded programmatically. See [DATA_SOURCES.md](DATA_SOURCES.md) for full provenance.
 
@@ -75,7 +133,77 @@ All data is downloaded programmatically. See [DATA_SOURCES.md](DATA_SOURCES.md) 
 | BLS LAUS | State unemployment rate | Bureau of Labor Statistics |
 | BLS QCEW | Average weekly wage (~7% coverage) | Bureau of Labor Statistics |
 
-## Project Structure
+---
+
+<a id="中文"></a>
+
+## 中文
+
+### 项目做了什么
+
+本项目研究美国州级最低工资上调是否改善了租房者的住房可负担性。使用 51 个州/特区 2010–2024 年的平衡面板（N=714，排除 2020），采用双向固定效应（TWFE）双重差分设计估计最低工资上调对租金收入比的因果效应。
+
+**核心发现：**
+- 住房可负担性没有显著改善（租金收入比 +0.22pp，p=0.21）
+- 显著的租金成本转嫁：**每 $1 最低工资上调，租金上涨 $26.5/月**（p<0.001）
+- 异质性效应：**高负担州 +$88/月**（p=0.002） vs 低负担州 +$13（不显著）
+- 政策启示：仅靠最低工资上调不足以改善住房可负担性——尤其在住房市场紧张地区
+
+### 实现方法
+
+流水线依次执行 11 个阶段：
+
+| 阶段 | 脚本 | 功能 |
+|------|------|------|
+| 1. 数据下载 | `download_data.py` | 从 FRED、Census ACS、BLS LAUS、BLS QCEW 获取原始数据 |
+| 2. 政策清洗 | `clean_policy.py` | 构造最低工资变量；定义处理为年涨幅 ≥$0.50（过滤 CPI 微小调整）；识别各州首次处理年份 |
+| 3. 结果清洗 | `clean_outcomes.py` | 处理 ACS 租金负担（B25071）和租金水平（B25064） |
+| 4. 控制变量 | `clean_controls.py` | 处理失业率；自动排除缺失率 >50% 的变量 |
+| 5. 面板构建 | `build_panel.py` | 将所有数据源合并为 51×15 的平衡面板 |
+| 6. 描述统计 | `eda.py` | 汇总统计、处理前平衡表、趋势图 |
+| 7. 基准 DiD | `did_baseline.py` | 含州和年份固定效应、聚类标准误的 TWFE 回归 |
+| 8. 事件研究 | `event_study.py` | 处理前后 ±5 年的动态效应（租金负担和对数租金） |
+| 9. 稳健性 | `robustness.py` | 替代设定、安慰剂排列检验（100 次） |
+| 10. 异质性分析 | `heterogeneity.py` | 成本转嫁弹性、住房市场条件分组效应 |
+| 11. 图表 | `make_figures.py` | 系数图、事件研究图、诊断图 |
+
+### 识别策略
+
+- **处理组：** 2015–2024 年间单年涨幅 ≥$0.50 的 30 个州
+- **对照组：** 维持在联邦最低工资（$7.25）附近的 21 个州
+- **模型：** Y_st = α_s + λ_t + β · Post_st + γ · X_st + ε_st
+- **推断：** 带州聚类标准误的 OLS（51 个聚类）
+- **稳健性：** 连续处理强度（mw_gap）、州线性趋势、仅 2020 前样本、替代因变量、替代处理定义、安慰剂检验
+
+### 数据来源
+
+所有数据通过程序自动下载。详见 [DATA_SOURCES.md](DATA_SOURCES.md)。
+
+| 来源 | 变量 | 提供方 |
+|------|------|--------|
+| FRED | 州与联邦最低工资 | 圣路易斯联邦储备银行 |
+| ACS B25071 | 租金占收入百分比（中位数） | 美国人口普查局 |
+| ACS B25064 | 租金水平（中位数，美元） | 美国人口普查局 |
+| BLS LAUS | 州失业率 | 美国劳工统计局 |
+| BLS QCEW | 平均周薪（覆盖率约 7%） | 美国劳工统计局 |
+
+---
+
+<a id="reports"></a>
+
+## Reports / レポート / 报告
+
+完全な分析レポート（図表・回帰結果を含む）：
+
+| Language | Link |
+|----------|------|
+| English | [Full Report](report/report.md) |
+| 中文 | [完整报告](report/report_zh.md) |
+| 日本語 | [完全レポート](report/report_ja.md) |
+
+---
+
+### Project Structure
 
 ```
 .
@@ -109,162 +237,4 @@ All data is downloaded programmatically. See [DATA_SOURCES.md](DATA_SOURCES.md) 
     └── report_ja.md            # 日本語
 ```
 
----
-
 *Built with Python, pandas, statsmodels, and matplotlib.*
-
----
-
-# minwage-housing-analysis（中文）
-
-> **报告：[English](report/report.md) | [中文](report/report_zh.md) | [日本語](report/report_ja.md)**
-
----
-
-## 快速开始
-
-```bash
-# 1. 配置环境（需要 Python 3.11+）
-bash scripts/setup_env.sh
-source .venv/bin/activate
-
-# 2. 运行完整流水线（下载 + 清洗 + 分析）
-bash scripts/run_pipeline.sh
-
-# 3. 如数据已下载，跳过下载步骤
-bash scripts/run_pipeline.sh --skip-download
-```
-
-可选环境变量（提高 API 请求配额）：
-
-```bash
-export CENSUS_API_KEY="your_key"   # https://api.census.gov/data/key_signup.html
-export BLS_API_KEY="your_key"      # https://data.bls.gov/registrationEngine/
-```
-
----
-
-## 项目做了什么
-
-本项目研究美国州级最低工资上调是否改善了租房者的住房可负担性。使用 51 个州/特区 2010–2024 年的平衡面板（N=714，排除 2020），采用双向固定效应（TWFE）双重差分设计估计最低工资上调对租金收入比的因果效应。
-
-**核心发现：**
-- 住房可负担性没有显著改善（租金收入比 +0.22pp，p=0.21）
-- 显著的租金成本转嫁：**每 $1 最低工资上调，租金上涨 $26.5/月**（p<0.001）
-- 异质性效应：**高负担州 +$88/月**（p=0.002） vs 低负担州 +$13（不显著）
-- 政策启示：仅靠最低工资上调不足以改善住房可负担性——尤其在住房市场紧张地区
-
-## 实现方法
-
-流水线依次执行 10 个阶段：
-
-| 阶段 | 脚本 | 功能 |
-|------|------|------|
-| 1. 数据下载 | `download_data.py` | 从 FRED、Census ACS、BLS LAUS、BLS QCEW 获取原始数据 |
-| 2. 政策清洗 | `clean_policy.py` | 构造最低工资变量；定义处理为年涨幅 ≥$0.50（过滤 CPI 微小调整）；识别各州首次处理年份 |
-| 3. 结果清洗 | `clean_outcomes.py` | 处理 ACS 租金负担（B25071）和租金水平（B25064） |
-| 4. 控制变量 | `clean_controls.py` | 处理失业率；自动排除缺失率 >50% 的变量 |
-| 5. 面板构建 | `build_panel.py` | 将所有数据源合并为 51×15 的平衡面板 |
-| 6. 描述统计 | `eda.py` | 汇总统计、处理前平衡表、趋势图 |
-| 7. 基准 DiD | `did_baseline.py` | 含州和年份固定效应、聚类标准误的 TWFE 回归 |
-| 8. 事件研究 | `event_study.py` | 处理前后 ±5 年的动态效应（租金负担和对数租金） |
-| 9. 稳健性 | `robustness.py` | 替代设定、安慰剂排列检验（100 次） |
-| 10. 图表 | `make_figures.py` | 系数图、事件研究图、诊断图 |
-
-### 识别策略
-
-- **处理组：** 2015–2024 年间单年涨幅 ≥$0.50 的 30 个州
-- **对照组：** 维持在联邦最低工资（$7.25）附近的 21 个州
-- **模型：** Y_st = α_s + λ_t + β · Post_st + γ · X_st + ε_st
-- **推断：** 带州聚类标准误的 OLS（51 个聚类）
-- **稳健性：** 连续处理强度（mw_gap）、州线性趋势、仅 2020 前样本、替代因变量、替代处理定义、安慰剂检验
-
-## 数据来源
-
-所有数据通过程序自动下载。详见 [DATA_SOURCES.md](DATA_SOURCES.md)。
-
-| 来源 | 变量 | 提供方 |
-|------|------|--------|
-| FRED | 州与联邦最低工资 | 圣路易斯联邦储备银行 |
-| ACS B25071 | 租金占收入百分比（中位数） | 美国人口普查局 |
-| ACS B25064 | 租金水平（中位数，美元） | 美国人口普查局 |
-| BLS LAUS | 州失业率 | 美国劳工统计局 |
-| BLS QCEW | 平均周薪（覆盖率约 7%） | 美国劳工统计局 |
-
----
-
-# minwage-housing-analysis（日本語）
-
-> **レポート：[English](report/report.md) | [中文](report/report_zh.md) | [日本語](report/report_ja.md)**
-
----
-
-## クイックスタート
-
-```bash
-# 1. 環境構築（Python 3.11以上が必要）
-bash scripts/setup_env.sh
-source .venv/bin/activate
-
-# 2. フルパイプライン実行（ダウンロード＋クリーニング＋分析）
-bash scripts/run_pipeline.sh
-
-# 3. データがダウンロード済みの場合
-bash scripts/run_pipeline.sh --skip-download
-```
-
-オプション環境変数（APIレート制限の引き上げ）：
-
-```bash
-export CENSUS_API_KEY="your_key"   # https://api.census.gov/data/key_signup.html
-export BLS_API_KEY="your_key"      # https://data.bls.gov/registrationEngine/
-```
-
----
-
-## プロジェクトの概要
-
-本プロジェクトは、米国の州レベルの最低賃金引き上げが賃借人の住宅の手頃さを改善するかどうかを調査する。51州／DCの2010–2024年均衡パネル（N=714、2020年除外）を用い、双方向固定効果（TWFE）差の差デザインにより、最低賃金引き上げが家賃対所得比に与える因果効果を推定する。
-
-**主な知見：**
-- 住宅の手頃さに有意な改善なし（家賃対所得比 +0.22pp、p=0.21）
-- 有意な家賃パススルー：**最低賃金$1引き上げあたり家賃+$26.5/月**（p<0.001）
-- 異質的効果：**高負担州で+$88/月**（p=0.002） vs 低負担州+$13（有意でない）
-- 政策的含意：最低賃金引き上げだけでは不十分——特に住宅市場が逼迫した地域
-
-## 実装方法
-
-パイプラインは10段階を順次実行する：
-
-| 段階 | スクリプト | 内容 |
-|------|-----------|------|
-| 1. ダウンロード | `download_data.py` | FRED、Census ACS、BLS LAUS、BLS QCEWから生データ取得 |
-| 2. 政策クリーニング | `clean_policy.py` | 最低賃金変数の構築；年間$0.50以上の引き上げを処置と定義（CPI微小調整を除外）；州ごとの初回処置年の特定 |
-| 3. アウトカム | `clean_outcomes.py` | ACS家賃負担（B25071）と家賃水準（B25064）の処理 |
-| 4. コントロール変数 | `clean_controls.py` | 失業率の処理；欠損率50%超の変数を自動除外 |
-| 5. パネル構築 | `build_panel.py` | 全データソースを51×15の均衡パネルに統合 |
-| 6. 記述統計 | `eda.py` | 要約統計量、処置前バランス表、トレンドプロット |
-| 7. ベースラインDiD | `did_baseline.py` | 州＋年固定効果、クラスター標準誤差によるTWFE回帰 |
-| 8. イベントスタディ | `event_study.py` | 処置前後±5年の動的効果（家賃負担と対数家賃） |
-| 9. 頑健性 | `robustness.py` | 代替仕様、プラセボ順列検定（100回） |
-| 10. 図表 | `make_figures.py` | 係数プロット、イベントスタディ図、診断図 |
-
-### 識別戦略
-
-- **処置群：** 2015–2024年に単年度$0.50以上引き上げた30州
-- **対照群：** 連邦最低賃金（$7.25）付近に留まった21州
-- **モデル：** Y_st = α_s + λ_t + β · Post_st + γ · X_st + ε_st
-- **推論：** 州クラスター標準誤差によるOLS（51クラスター）
-- **頑健性：** 連続処置強度（mw_gap）、州線形トレンド、2020年以前サブサンプル、代替被説明変数、代替処置定義、プラセボ検定
-
-## データソース
-
-すべてのデータはプログラムにより自動ダウンロードされる。詳細は[DATA_SOURCES.md](DATA_SOURCES.md)を参照。
-
-| ソース | 変数 | 提供元 |
-|--------|------|--------|
-| FRED | 州・連邦最低賃金 | セントルイス連邦準備銀行 |
-| ACS B25071 | 家賃の所得に対する割合（中央値） | 米国国勢調査局 |
-| ACS B25064 | 家賃水準（中央値、ドル） | 米国国勢調査局 |
-| BLS LAUS | 州別失業率 | 米国労働統計局 |
-| BLS QCEW | 平均週給（カバレッジ約7%） | 米国労働統計局 |
