@@ -42,6 +42,7 @@ python -m src.eda
 python -m src.did_baseline
 python -m src.event_study
 python -m src.robustness
+python -m src.heterogeneity
 python -m src.make_figures
 
 echo "Pipeline finished. Key output: data/processed/state_year_panel.csv"

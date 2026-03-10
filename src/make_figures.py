@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from src.config import FIGURES_DIR, PANEL_FILE, TABLES_DIR, ensure_project_dirs
+from src.config import FIGURES_DIR, FIRST_TREAT_START_YEAR, PANEL_FILE, TABLES_DIR, ensure_project_dirs
 
 
 def coefficient_plot(frame: pd.DataFrame, *, title: str, output_name: str) -> None:
@@ -104,6 +104,98 @@ def placebo_histogram(placebo_path, actual_coef: float) -> None:
     plt.close(fig)
 
 
+def subgroup_forest_plot(summary_path) -> None:
+    """Two-panel forest plot: subgroup treatment effects (rent burden vs rent level)."""
+    if not summary_path.exists():
+        return
+    df = pd.read_csv(summary_path)
+    post_rows = df.loc[df["term"] == "post"].copy()
+    if post_rows.empty:
+        return
+
+    label_map = {
+        "high_burden_rentshare": "High burden",
+        "low_burden_rentshare": "Low burden",
+        "high_rent_rentshare": "High rent",
+        "low_rent_rentshare": "Low rent",
+        "high_burden_rentlevel": "High burden",
+        "low_burden_rentlevel": "Low burden",
+        "high_rent_rentlevel": "High rent",
+        "low_rent_rentlevel": "Low rent",
+    }
+    post_rows["label"] = post_rows["model_name"].map(label_map)
+
+    pct_df = post_rows.loc[post_rows["outcome"] == "median_rent_pct_income"].copy()
+    dollar_df = post_rows.loc[post_rows["outcome"] == "median_gross_rent"].copy()
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+    for ax, data, xlabel, title, color in [
+        (axes[0], pct_df, "Coefficient (pp)", "Rent burden (% income)", "steelblue"),
+        (axes[1], dollar_df, "Coefficient ($)", "Rent level (dollars)", "darkorange"),
+    ]:
+        if data.empty:
+            continue
+        plotted = data.sort_values("coef").reset_index(drop=True)
+        positions = range(len(plotted))
+        ax.axvline(0, color="black", linewidth=1)
+        ax.errorbar(plotted["coef"], positions,
+                     xerr=[plotted["coef"] - plotted["ci_low"], plotted["ci_high"] - plotted["coef"]],
+                     fmt="o", capsize=4, color=color)
+        ax.set_yticks(list(positions))
+        ax.set_yticklabels(plotted["label"])
+        ax.set_xlabel(xlabel)
+        ax.set_title(title)
+        ax.grid(axis="x", alpha=0.25)
+
+    fig.suptitle("Heterogeneous treatment effects by housing market conditions", fontsize=13, y=1.02)
+    fig.tight_layout()
+    fig.savefig(FIGURES_DIR / "heterogeneity_subgroup_effects.png", dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
+
+def scatter_mw_rent_change() -> None:
+    """Scatter: state-level change in MW gap vs change in rent (pre vs post treatment)."""
+    if not PANEL_FILE.exists():
+        return
+    panel = pd.read_csv(PANEL_FILE)
+    pre = panel.loc[panel["year"] < FIRST_TREAT_START_YEAR]
+    post = panel.loc[panel["year"] >= FIRST_TREAT_START_YEAR]
+
+    state_pre = pre.groupby("state_abbr").agg(
+        mw_gap_pre=("mw_gap", "mean"),
+        rent_pre=("median_gross_rent", "mean"),
+    ).reset_index()
+    state_post = post.groupby("state_abbr").agg(
+        mw_gap_post=("mw_gap", "mean"),
+        rent_post=("median_gross_rent", "mean"),
+    ).reset_index()
+
+    changes = state_pre.merge(state_post, on="state_abbr").dropna()
+    changes["delta_mw"] = changes["mw_gap_post"] - changes["mw_gap_pre"]
+    changes["delta_rent"] = changes["rent_post"] - changes["rent_pre"]
+
+    fig, ax = plt.subplots(figsize=(10, 7))
+    ax.scatter(changes["delta_mw"], changes["delta_rent"], s=40, alpha=0.7, color="steelblue")
+    for _, row in changes.iterrows():
+        ax.annotate(row["state_abbr"], (row["delta_mw"], row["delta_rent"]),
+                     fontsize=7, alpha=0.7, ha="center", va="bottom")
+
+    # OLS fit line
+    z = np.polyfit(changes["delta_mw"], changes["delta_rent"], 1)
+    x_fit = np.linspace(changes["delta_mw"].min(), changes["delta_mw"].max(), 100)
+    ax.plot(x_fit, np.polyval(z, x_fit), color="red", linewidth=1.5, linestyle="--")
+
+    corr = changes["delta_mw"].corr(changes["delta_rent"])
+    ax.set_xlabel("Change in MW gap above federal ($)")
+    ax.set_ylabel("Change in median gross rent ($)")
+    ax.set_title(f"State-level: MW increase vs rent increase (r = {corr:.2f})")
+    ax.grid(alpha=0.25)
+    fig.tight_layout()
+    fig.savefig(FIGURES_DIR / "scatter_mw_gap_vs_rent_change.png", dpi=200)
+    plt.close(fig)
+
+
 def main() -> None:
     ensure_project_dirs()
 
@@ -159,6 +251,13 @@ def main() -> None:
     actual_coef = did.loc[(did["model_name"] == "twfe_post_rent_share") & (did["term"] == "post"), "coef"]
     if not actual_coef.empty:
         placebo_histogram(placebo_path, float(actual_coef.iloc[0]))
+
+    # -- Heterogeneity subgroup forest plot --
+    subgroup_path = TABLES_DIR / "heterogeneity_subgroups_summary.csv"
+    subgroup_forest_plot(subgroup_path)
+
+    # -- Scatter: MW gap change vs rent change --
+    scatter_mw_rent_change()
 
     print("Publication-style figures written to outputs/figures.")
 
