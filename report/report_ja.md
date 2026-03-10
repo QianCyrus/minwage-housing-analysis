@@ -2,7 +2,7 @@
 
 ## 米国州レベルパネル分析（2010–2024）
 
-**[English](report.md) | [中文](report_zh.md)**
+**[English](report.md) | [中文](report_zh.md) | [README](../README.md)**
 
 ---
 

@@ -2,7 +2,7 @@
 
 ## A State-Level Panel Analysis (2010–2024)
 
-**[中文版](report_zh.md) | [日本語版](report_ja.md)**
+**[中文版](report_zh.md) | [日本語版](report_ja.md) | [README](../README.md)**
 
 ---
 

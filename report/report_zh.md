@@ -2,7 +2,7 @@
 
 ## 美国州级面板分析（2010–2024）
 
-**[English](report.md) | [日本語](report_ja.md)**
+**[English](report.md) | [日本語](report_ja.md) | [README](../README.md)**
 
 ---
 
